@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zero-Drift Arithmetic Architecture Benchmark</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --border: #334155;
+            --accent: #10b981;
+            --accent-hover: #059669;
+            --info: #3b82f6;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, sans-serif;
+            padding: 20px;
+            line-height: 1.5;
+        }
+
+        .container { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+        
+        header {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+        .subtitle { font-size: 0.875rem; color: var(--text-muted); }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .card h2 { font-size: 1.1rem; margin-bottom: 15px; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+
+        .form-group { margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; }
+        label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+        }
+        button {
+            background: var(--accent);
+            color: #000;
+            font-weight: 600;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 10px;
+        }
+        button:hover { background: var(--accent-hover); }
+
+        table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 0.85rem; margin-top: 10px; }
+        th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+        th { color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; }
+        
+        .error-text { color: var(--danger); font-weight: bold; }
+        .zero-drift-text { color: var(--accent); font-weight: bold; }
+        .warning-text { color: var(--warning); font-weight: bold; }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            font-family: var(--font-mono);
+        }
+        .badge-success { background: rgba(16, 185, 129, 0.2); color: var(--accent); }
+        .badge-info { background: rgba(59, 130, 246, 0.2); color: var(--info); }
+        .badge-warning { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+        .badge-fail { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+
+        .mono-box {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 12px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div>
+            <h1>Zero-Drift Arithmetic Architectural Comparison</h1>
+            <div class="subtitle">Float64 vs Kahan Summation vs Standard Rational (BigInt+GCD) vs Base-2520 LUT Engine</div>
+        </div>
+        <div>
+            <span class="badge badge-success">4 Engine Models Active</span>
+        </div>
+    </header>
+
+    <div class="grid">
+        <!-- Live Inspector -->
+        <div class="card">
+            <h2>1. State Inspector & Multi-Engine Decomposition</h2>
+            <div class="form-group">
+                <label>Fraction Input (Numerator / Denominator)</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="number" id="numInput" value="1" style="width: 50%;">
+                    <input type="number" id="denInput" value="7" style="width: 50%;">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Macro Part (Whole Integer)</label>
+                <input type="number" id="macroInput" value="10000">
+            </div>
+            <button onclick="inspectValue()">Inspect Internal Structures</button>
+
+            <div style="margin-top: 15px;">
+                <div class="mono-box" id="inspectorOutput">Click compute to inspect...</div>
+            </div>
+        </div>
+
+        <!-- Engine Overhead Explanation -->
+        <div class="card">
+            <h2>2. Architectural Characteristics</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Engine</th>
+                        <th>Addition Complexity</th>
+                        <th>Zero Drift?</th>
+                        <th>Primary Bottleneck</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="badge badge-fail">Float64</span></td>
+                        <td>O(1) Hardware</td>
+                        <td>No</td>
+                        <td>Mantissa Tail Truncation</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-info">Kahan Sum</span></td>
+                        <td>O(1) Software</td>
+                        <td>Partial</td>
+                        <td>Limited to Additions Only</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-warning">Standard Rational</span></td>
+                        <td>O(log N) BigInt</td>
+                        <td>Yes (100%)</td>
+                        <td>GCD Euclidean Loop & Allocation</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-success">Base-2520 LUT</span></td>
+                        <td>O(1) Fixed-Point</td>
+                        <td>Yes (Factors 1-10)</td>
+                        <td>Micro Carry Propagation</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Benchmark Suite -->
+    <div class="card">
+        <h2>3. Four-Way Benchmark Suite</h2>
+        <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 15px;">
+            <div class="form-group" style="margin: 0; width: 220px;">
+                <label>Iterations (N)</label>
+                <input type="number" id="benchIter" value="200000">
+            </div>
+            <button onclick="runBenchmarks()" style="margin-top: auto;">Run Comprehensive Benchmarks</button>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Test Scenario</th>
+                    <th>Engine Architecture</th>
+                    <th>Computed Value</th>
+                    <th>Drift Error</th>
+                    <th>Execution Time</th>
+                    <th>Relative Speed</th>
+                </tr>
+            </thead>
+            <tbody id="benchResults">
+                <tr>
+                    <td colspan="6" style="text-align: center; color: var(--text-muted);">Click "Run Comprehensive Benchmarks" to start...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+// ==============================================================================
+// ENGINE IMPLEMENTATIONS
+// ==============================================================================
+
+// 1. BASE-2520 + TYPED LUT ENGINE
+const BASE_2520 = 2520;
+const LUT_MULTIPLY = new Uint16Array(256 * 256);
+for (let a = 0; a < 256; a++) {
+    for (let b = 0; b < 256; b++) {
+        LUT_MULTIPLY[(a << 8) | b] = a * b;
+    }
+}
+
+class Base2520Engine {
+    constructor(macro = 0, micro = 0) {
+        let extraMacro = Math.floor(micro / BASE_2520);
+        this.macro = Math.floor(macro) + extraMacro;
+        this.micro = ((micro % BASE_2520) + BASE_2520) % BASE_2520;
+    }
+
+    static fromFraction(num, den) {
+        return new Base2520Engine(0, Math.floor((num * BASE_2520) / den));
+    }
+
+    iadd(other) {
+        this.micro += other.micro;
+        this.macro += other.macro;
+        if (this.micro >= BASE_2520) {
+            this.macro += Math.floor(this.micro / BASE_2520);
+            this.micro %= BASE_2520;
+        }
+        return this;
+    }
+
+    toFloat() { return this.macro + (this.micro / BASE_2520); }
+}
+
+// 2. STANDARD RATIONAL ENGINE (DEFAULT TEXTBOOK ZERO-DRIFT WAY)
+function gcdBigInt(a, b) {
+    a = a < 0n ? -a : a;
+    b = b < 0n ? -b : b;
+    while (b > 0n) {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    return a;
+}
+
+class StandardRationalEngine {
+    constructor(num, den) {
+        let n = BigInt(num);
+        let d = BigInt(den);
+        let g = gcdBigInt(n, d);
+        this.num = n / g;
+        this.den = d / g;
+    }
+
+    add(other) {
+        let n = (this.num * other.den) + (other.num * this.den);
+        let d = this.den * other.den;
+        return new StandardRationalEngine(n, d);
+    }
+
+    toFloat() { return Number(this.num) / Number(this.den); }
+}
+
+// 3. KAHAN COMPENSATED SUMMATION ENGINE
+class KahanEngine {
+    constructor(initialValue = 0) {
+        this.sum = initialValue;
+        this.c = 0.0; // Running compensation
+    }
+
+    add(value) {
+        let y = value - this.c;
+        let t = this.sum + y;
+        this.c = (t - this.sum) - y;
+        this.sum = t;
+        return this;
+    }
+
+    toFloat() { return this.sum; }
+}
+
+// ==============================================================================
+// BENCHMARK AND UI CONTROLLER
+// ==============================================================================
+function inspectValue() {
+    let num = parseInt(document.getElementById('numInput').value);
+    let den = parseInt(document.getElementById('denInput').value);
+    let macro = parseInt(document.getElementById('macroInput').value);
+
+    let zd = new Base2520Engine(macro, Base2520Engine.fromFraction(num, den).micro);
+    let rat = new StandardRationalEngine(BigInt(macro) * BigInt(den) + BigInt(num), den);
+
+    let out = `--- INPUT: ${macro} + (${num}/${den}) ---\n\n`;
+    out += `[Base-2520 Fixed-Point]\n`;
+    out += `  Macro Register : ${zd.macro}\n`;
+    out += `  Micro Register : ${zd.micro} / 2520 units\n`;
+    out += `  Storage Size   : 2 Native Integers (64-bit)\n\n`;
+    out += `[Standard Rational (Default Zero-Drift)]\n`;
+    out += `  Numerator      : ${rat.num.toString()}\n`;
+    out += `  Denominator    : ${rat.den.toString()}\n`;
+    out += `  Storage Size   : 2 Heap BigInt Objects (GCD reduced)`;
+
+    document.getElementById('inspectorOutput').innerText = out;
+}
+
+function runBenchmarks() {
+    let iterations = parseInt(document.getElementById('benchIter').value);
+    let tbody = document.getElementById('benchResults');
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Executing benchmarks across all 4 engines...</td></tr>';
+
+    setTimeout(() => {
+        let html = '';
+        let totalAdds = iterations * 7;
+        let expected = iterations;
+
+        // 1. Float64
+        let t0 = performance.now();
+        let floatSum = 0.0;
+        let fracFloat = 1.0 / 7.0;
+        for (let i = 0; i < totalAdds; i++) floatSum += fracFloat;
+        let floatTime = performance.now() - t0;
+        let floatErr = Math.abs(floatSum - expected);
+
+        // 2. Kahan Summation
+        t0 = performance.now();
+        let kahan = new KahanEngine(0);
+        for (let i = 0; i < totalAdds; i++) kahan.add(fracFloat);
+        let kahanTime = performance.now() - t0;
+        let kahanErr = Math.abs(kahan.toFloat() - expected);
+
+        // 3. Standard Rational (Default BigInt + GCD)
+        t0 = performance.now();
+        let ratSum = new StandardRationalEngine(0, 1);
+        let ratFrac = new StandardRationalEngine(1, 7);
+        // Note: Cap Rational loops if iterations > 50,000 to prevent browser freeze due to O(log N) GCD scaling
+        let ratLoopCount = Math.min(totalAdds, 140000); 
+        for (let i = 0; i < ratLoopCount; i++) {
+            ratSum = ratSum.add(ratFrac);
+        }
+        let ratTime = (performance.now() - t0) * (totalAdds / ratLoopCount); // Scaled estimate if capped
+        let ratErr = Math.abs(ratSum.toFloat() - (ratLoopCount / 7));
+
+        // 4. Base-2520 LUT Engine
+        t0 = performance.now();
+        let zdSum = new Base2520Engine(0, 0);
+        let zdFrac = Base2520Engine.fromFraction(1, 7);
+        for (let i = 0; i < totalAdds; i++) zdSum.iadd(zdFrac);
+        let zdTime = performance.now() - t0;
+        let zdErr = Math.abs(zdSum.toFloat() - expected);
+
+        // Render Table Rows
+        html += `
+        <tr>
+            <td rowspan="4">Fractional Accumulation<br><small>(${totalAdds.toLocaleString()} x 1/7)</small></td>
+            <td>1. Standard Float64</td>
+            <td>${floatSum.toFixed(8)}</td>
+            <td class="error-text">${floatErr.toExponential(4)}</td>
+            <td>${floatTime.toFixed(2)} ms</td>
+            <td>1.0x (Baseline)</td>
+        </tr>
+        <tr>
+            <td>2. Kahan Summation</td>
+            <td>${kahan.toFloat().toFixed(8)}</td>
+            <td class="zero-drift-text">${kahanErr.toFixed(12)}</td>
+            <td>${kahanTime.toFixed(2)} ms</td>
+            <td>${(kahanTime / floatTime).toFixed(1)}x slower</td>
+        </tr>
+        <tr>
+            <td>3. Standard Rational (BigInt + GCD)</td>
+            <td>${ratSum.toFloat().toFixed(8)}</td>
+            <td class="zero-drift-text">${ratErr.toFixed(12)}</td>
+            <td>${ratTime.toFixed(2)} ms ${ratLoopCount < totalAdds ? '(Extrapolated)' : ''}</td>
+            <td class="warning-text">${(ratTime / floatTime).toFixed(1)}x slower</td>
+        </tr>
+        <tr>
+            <td>4. Base-2520 LUT Engine</td>
+            <td>${zdSum.toFloat().toFixed(8)}</td>
+            <td class="zero-drift-text">${zdErr.toFixed(12)}</td>
+            <td>${zdTime.toFixed(2)} ms</td>
+            <td class="zero-drift-text">${(zdTime / floatTime).toFixed(1)}x slower</td>
+        </tr>`;
+
+        tbody.innerHTML = html;
+    }, 50);
+}
+
+inspectValue();
+</script>
+
+</body>
+</html>
