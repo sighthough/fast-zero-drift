@@ -47,3 +47,114 @@ if (this.micro >= 2520) {
 | **ALU Execution Time** | $\sim 0.5 \text{ ns}$ | $\sim 50\text{--}500 \text{ ns}$ | $\sim 1\text{--}2 \text{ ns}$ |
 
 By eliminating floating-point rounding truncation while discarding dynamic fraction reduction, Base-2520 delivers absolute mathematical exactness at the speed of native scalar integer instruction pipelines.
+
+
+
+
+
+The core reference implementation below is written in universal, pseudo-C/C++ structure with 64-bit integer primitives. It translates 1:1 into C++, Rust, C#, Go, Java, Python, or TypeScript.
+
+```cpp
+// CONSTANT: 2520 is the Least Common Multiple (LCM) of numbers 1 through 10.
+// Every fraction with a denominator from 1 to 10 converts to an exact integer.
+const int64_t BASE_2520 = 2520;
+
+struct Base2520 {
+    int64_t macro; // Stores the whole integer part (e.g., 10 in 10.25)
+    int64_t micro; // Stores sub-units in range [0, 2519] (e.g., 630 for 0.25)
+
+    // =========================================================================
+    // 1. NORMALIZATION (The Core Engine Routine)
+    // Keeps 'micro' bounded inside [0, 2519] by transferring overflow/underflow
+    // into the 'macro' integer. Must be executed after every arithmetic step.
+    // =========================================================================
+    void normalize() {
+        if (micro >= BASE_2520 || micro < 0) {
+            int64_t carry = micro / BASE_2520;
+            micro = micro % BASE_2520;
+
+            // Handle language-specific negative modulo (e.g., C/C++/Java return negative % values)
+            if (micro < 0) {
+                micro += BASE_2520;
+                carry -= 1; // Borrow 1 unit from macro
+            }
+            macro += carry;
+        }
+    }
+
+    // =========================================================================
+    // 2. CONVERSION FROM FRACTION
+    // Converts (numerator / denominator) into exact Base-2520 micro-units.
+    // Example: 1/7 -> (1 * 2520) / 7 = 360 micro-units.
+    // =========================================================================
+    static Base2520 fromFraction(int64_t num, int64_t den) {
+        int64_t total_micro = (num * BASE_2520) / den;
+        Base2520 result = {0, total_micro};
+        result.normalize();
+        return result;
+    }
+
+    // =========================================================================
+    // 3. ZERO-DRIFT ADDITION
+    // Pure integer addition. Runs in O(1) CPU time with 0% precision drift.
+    // =========================================================================
+    Base2520 add(const Base2520& other) const {
+        Base2520 result = {
+            this->macro + other.macro,
+            this->micro + other.micro
+        };
+        result.normalize(); // Carry micro overflow into macro
+        return result;
+    }
+
+    // =========================================================================
+    // 4. ZERO-DRIFT SUBTRACTION
+    // Handles underflow via automatic borrowing from macro in normalize().
+    // =========================================================================
+    Base2520 subtract(const Base2520& other) const {
+        Base2520 result = {
+            this->macro - other.macro,
+            this->micro - other.micro
+        };
+        result.normalize();
+        return result;
+    }
+
+    // =========================================================================
+    // 5. SCALAR MULTIPLICATION
+    // Multiplies the fixed-point number by an integer multiplier.
+    // =========================================================================
+    Base2520 multiplyScalar(int64_t scalar) const {
+        Base2520 result = {
+            this->macro * scalar,
+            this->micro * scalar
+        };
+        result.normalize();
+        return result;
+    }
+
+    // =========================================================================
+    // 6. CONVERT TO HARDWARE FLOAT
+    // Used only when outputting data to UI, canvas rendering, or external APIs.
+    // =========================================================================
+    double toDouble() const {
+        return (double)macro + ((double)micro / (double)BASE_2520);
+    }
+};
+
+```
+
+**Key Translation Notes Across Languages**
+
+* **Signed Modulo Differences:** Languages handle `%` with negative numbers differently. C++, C#, Java, and JS return negative remainders (`-5 % 2520 = -5`), requiring the `micro < 0` check shown above. Python and Rust (`rem_euclid`) natively return positive moduli.
+* **Integer Types:** Always use 64-bit signed integers (`int64_t`, `long long`, `i64`, `BigInt`) for `macro` and `micro` to avoid register overflow during large scalar multiplications before normalization occurs.
+* **Compile-Time Constant Lookups:** In performance-critical implementations (game engines, financial engines), hardcode common single-digit fractions as static constants instead of executing runtime division:
+* $\frac{1}{2} = 1260$
+* $\frac{1}{3} = 840$
+* $\frac{1}{4} = 630$
+* $\frac{1}{5} = 504$
+* $\frac{1}{6} = 420$
+* $\frac{1}{7} = 360$
+* $\frac{1}{8} = 315$
+* $\frac{1}{9} = 280$
+* $\frac{1}{10} = 252$
