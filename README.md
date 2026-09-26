@@ -1,7 +1,7 @@
 # fast-zero-drift
 a fast way to do zero drift calculations using base 2520
 
-made by [sighthough](https://youtu.be/UtPiUGwu-0Q) using googles gemini 3.6 ai
+*Co-authored by [sighthough](https://youtu.be/UtPiUGwu-0Q) and [Googles Gemini](https://www.youtube.com/shorts/R3Qo4rBgrD8).*
 👉 **[CLICK HERE TO RUN THE LIVE BENCHMARK](https://sighthough.github.io/fast-zero-drift/)**
 
 The Base-2520 fixed-point engine achieves exact zero-drift arithmetic at near-native hardware speed by pairing the number theory of Superior Highly Composite Numbers with direct CPU integer register operations.
